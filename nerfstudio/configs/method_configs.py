@@ -251,6 +251,32 @@ method_configs["phototourism"] = Config(
     vis="viewer",
 )
 
+method_configs["dtensorf"] = Config(
+    method_name="dtensorf",
+    trainer=TrainerConfig(mixed_precision=False),
+    pipeline=VanillaPipelineConfig(
+        datamanager=VanillaDataManagerConfig(dataparser=DNeRFDataParserConfig()),
+        model=TensoRFModelConfig(
+            enable_temporal_distortion=True,
+            temporal_distortion_params={"kind": TemporalDistortionKind.DTENSORF},
+        ),
+    ),
+    optimizers={
+        "fields": {
+            "optimizer": AdamOptimizerConfig(lr=0.001),
+            "scheduler": SchedulerConfig(lr_final=0.0001, max_steps=30000),
+        },
+        "encodings": {
+            "optimizer": AdamOptimizerConfig(lr=0.02),
+            "scheduler": SchedulerConfig(lr_final=0.002, max_steps=30000),
+        },
+        "temporal_distortion": {
+            "optimizer": AdamOptimizerConfig(lr=1e-3),
+            "scheduler": None,
+        },
+    },
+)
+
 AnnotatedBaseConfigUnion = tyro.conf.SuppressFixed[  # Don't show unparseable (fixed) arguments in helptext.
     tyro.conf.FlagConversionOff[
         tyro.extras.subcommand_type_from_defaults(defaults=method_configs, descriptions=descriptions)

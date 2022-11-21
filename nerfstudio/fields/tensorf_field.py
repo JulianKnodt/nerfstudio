@@ -83,13 +83,18 @@ class TensoRFField(Field):
 
         self.field_output_rgb = RGBFieldHead(in_dim=self.mlp_head.get_out_dim(), activation=nn.Sigmoid())
 
+        self.D = nn.Linear(
+            in_features=3,
+            out_features=1,
+        )
+
     def get_density(self, ray_samples: RaySamples):
         positions = SceneBox.get_normalized_positions(ray_samples.frustums.get_positions(), self.aabb)
         positions = positions * 2 - 1
-        density = self.density_encoding(positions)
-        density_enc = torch.sum(density, dim=-1)[:, :, None]
-        relu = torch.nn.ReLU()
-        density_enc = relu(density_enc)
+        density_enc = self.density_encoding(positions)
+        density_enc = self.D(positions) + density_enc.sum(dim=-1, keepdim=True)
+        #density_enc = torch.sum(density, keepdim=True, dim=-1)
+        density_enc = torch.nn.functional.relu(density_enc)
         return density_enc
 
     def get_outputs(self, ray_samples: RaySamples, density_embedding: Optional[TensorType] = None) -> TensorType:

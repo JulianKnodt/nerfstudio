@@ -19,7 +19,7 @@ TensorRF implementation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple, Type
+from typing import Any, Dict, List, Tuple, Type
 
 import numpy as np
 import torch
@@ -37,6 +37,7 @@ from nerfstudio.engine.callbacks import (
 )
 from nerfstudio.field_components.encodings import NeRFEncoding, TensorVMEncoding
 from nerfstudio.field_components.field_heads import FieldHeadNames
+from nerfstudio.field_components.temporal_distortions import TemporalDistortionKind
 from nerfstudio.fields.tensorf_field import TensoRFField
 from nerfstudio.model_components.losses import MSELoss
 from nerfstudio.model_components.ray_samplers import PDFSampler, UniformSampler
@@ -73,6 +74,9 @@ class TensoRFModelConfig(ModelConfig):
     appearance_dim: int = 27
     """Number of channels for color encoding"""
 
+    enable_temporal_distortion: bool = False
+    temporal_distortion_params: Dict[str, Any] = to_immutable_dict({"kind": TemporalDistortionKind.DTENSORF})
+
 
 class TensoRFModel(Model):
     """TensoRF Model
@@ -104,6 +108,8 @@ class TensoRFModel(Model):
             .astype("int")
             .tolist()[1:]
         )
+        self.temporal_distortion = None
+
         super().__init__(config=config, **kwargs)
 
     def get_training_callbacks(
@@ -151,6 +157,7 @@ class TensoRFModel(Model):
         density_encoding = TensorVMEncoding(
             resolution=self.init_resolution,
             num_components=self.num_den_components,
+            include_input=False,
         )
         color_encoding = TensorVMEncoding(
             resolution=self.init_resolution,
@@ -193,6 +200,11 @@ class TensoRFModel(Model):
         if self.config.enable_collider:
             self.collider = AABBBoxCollider(scene_box=self.scene_box)
 
+        if getattr(self.config, "enable_temporal_distortion", False):
+            params = self.config.temporal_distortion_params
+            kind = params.pop("kind")
+            self.temporal_distortion = kind.to_temporal_distortion(params)
+
     def get_param_groups(self) -> Dict[str, List[Parameter]]:
         param_groups = {}
 
@@ -205,11 +217,18 @@ class TensoRFModel(Model):
             self.field.density_encoding.parameters()
         )
 
+        if self.temporal_distortion is not None:
+            param_groups["temporal_distortion"] = list(self.temporal_distortion.parameters())
+
         return param_groups
 
     def get_outputs(self, ray_bundle: RayBundle):
         # uniform sampling
         ray_samples_uniform = self.sampler_uniform(ray_bundle)
+        if self.temporal_distortion is not None:
+            pos_uni = ray_samples_uniform.frustums.get_positions()
+            offsets = self.temporal_distortion(pos_uni, ray_samples_uniform.times)
+            ray_samples_uniform.frustums.set_offsets(offsets)
         dens = self.field.get_density(ray_samples_uniform)
         weights = ray_samples_uniform.get_weights(dens)
         coarse_accumulation = self.renderer_accumulation(weights)
@@ -217,6 +236,10 @@ class TensoRFModel(Model):
 
         # pdf sampling
         ray_samples_pdf = self.sampler_pdf(ray_bundle, ray_samples_uniform, weights)
+        if self.temporal_distortion is not None:
+            pos_pdf = ray_samples_pdf.frustums.get_positions()
+            offsets = self.temporal_distortion(pos_pdf, ray_samples_pdf.times)
+            ray_samples_pdf.frustums.set_offsets(offsets)
 
         # fine field:
         field_outputs_fine = self.field.forward(

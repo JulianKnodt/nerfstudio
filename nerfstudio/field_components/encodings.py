@@ -22,6 +22,7 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torchvision.transforms.functional as tvf
 from torch import nn
 from torchtyping import TensorType
 from typing_extensions import Literal
@@ -411,6 +412,7 @@ class TensorVMEncoding(Encoding):
         resolution: Resolution of grid.
         num_components: Number of components per dimension.
         init_scale: Initialization scale.
+        include_input: Whether to include input.
     """
 
     plane_coef: TensorType[3, "num_components", "resolution", "resolution"]
@@ -421,6 +423,7 @@ class TensorVMEncoding(Encoding):
         resolution: int = 128,
         num_components: int = 24,
         init_scale: float = 0.1,
+        include_input:bool=True,
     ) -> None:
         super().__init__(in_dim=3)
 
@@ -428,12 +431,18 @@ class TensorVMEncoding(Encoding):
         self.num_components = num_components
 
         self.plane_coef = nn.Parameter(init_scale * torch.randn((3, num_components, resolution, resolution)))
+        #self.plane_conv = nn.Conv2d(num_components, num_components, 13)
+
         self.line_coef = nn.Parameter(init_scale * torch.randn((3, num_components, resolution, 1)))
+        self.include_input = include_input
 
     def get_out_dim(self) -> int:
-        return self.num_components * 3
+        return self.num_components * 3 + (3 if self.include_input else 0)
 
-    def forward(self, in_tensor: TensorType["bs":..., "input_dim"]) -> TensorType["bs":..., "output_dim"]:
+    def forward(
+        self,
+        in_tensor: TensorType["bs":..., 3]
+    ) -> TensorType["bs":..., "output_dim"]:
         """Compute encoding for each position in in_positions
 
         Args:
@@ -449,13 +458,23 @@ class TensorVMEncoding(Encoding):
         plane_coord = plane_coord.view(3, -1, 1, 2).detach()
         line_coord = line_coord.view(3, -1, 1, 2).detach()
 
-        plane_features = F.grid_sample(self.plane_coef, plane_coord, align_corners=True)  # [3, Components, -1, 1]
-        line_features = F.grid_sample(self.line_coef, line_coord, align_corners=True)  # [3, Components, -1, 1]
+        plane_features = F.grid_sample(
+            self.plane_coef,
+            plane_coord,
+            align_corners=True,
+        )  # [3, Components, -1, 1]
+        line_features = F.grid_sample(
+            self.line_coef,
+            line_coord,
+            align_corners=True,
+        )  # [3, Components, -1, 1]
 
         features = plane_features * line_features  # [3, Components, -1, 1]
-        features = torch.moveaxis(features.view(3 * self.num_components, *in_tensor.shape[:-1]), 0, -1)
+        features = features.reshape(3 * self.num_components, *in_tensor.shape[:-1]).moveaxis(0, -1)
 
-        return features  # [..., 3 * Components]
+        if self.include_input:
+            features = torch.cat([features, in_tensor], dim=-1)
+        return features  # [..., 3 * Components + (3 if include_input else 0)]
 
     @torch.no_grad()
     def upsample_grid(self, resolution: int) -> None:

@@ -53,6 +53,13 @@ class SceneBox:
         return SceneBox(aabb=(self.aabb - self.get_center()) * scale_factor)
 
     @staticmethod
+    def contains(positions: TensorType[..., 3], aabb: TensorType[2, 3]):
+      lo = aabb[0].reshape(*[1 for _ in positions.shape[:-1]], 3)
+      hi = aabb[1].reshape(*[1 for _ in positions.shape[:-1]], 3)
+      dims_in_bound = (lo < positions) & (positions < hi)
+      return dims_in_bound.all(keepdim=True, dim=-1)
+
+    @staticmethod
     def get_normalized_positions(positions: TensorType[..., 3], aabb: TensorType[2, 3]):
         """Return normalized positions in range [0, 1] based on the aabb axis-aligned bounding box.
 
@@ -64,6 +71,17 @@ class SceneBox:
         normalized_positions = (positions - aabb[0]) / aabb_lengths
         return normalized_positions
 
+    @staticmethod
+    def denormalize_positions(positions: TensorType[..., 3], aabb:TensorType[2,3]):
+        """Takes a position in range [0, 1] and rescales it to world coordinates
+
+        Args:
+            positions: the xyz positions
+            aabb: the axis-aligned bounding box
+        """
+        aabb_lengths = aabb[1] - aabb[0]
+        denormalized_positions = positions * aabb_lengths + aabb[0]
+        return denormalized_positions
     def to_json(self) -> Dict:
         """Returns a json object from the Python object."""
         return {"type": "aabb", "min_point": self.aabb[0].tolist(), "max_point": self.aabb[1].tolist()}

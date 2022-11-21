@@ -191,3 +191,12 @@ def expected_sin(x_means: torch.Tensor, x_vars: torch.Tensor) -> torch.Tensor:
     """
 
     return torch.exp(-0.5 * x_vars) * torch.sin(x_means)
+
+
+# de_casteljau's algorithm for evaluating bezier splines without numerical instability..
+def de_casteljau(coeffs, t, N: int):
+    betas = coeffs
+    m1t = 1 - t
+    for i in range(1, N):
+        betas = betas[..., :-1] * m1t + betas[..., 1:] * t
+    return betas.squeeze(-1)
