@@ -55,6 +55,8 @@ class TensoRFField(Field):
         # whether to use spherical harmonics as the feature decoding function
         sh_levels: int = 2,
         # number of levels to use for spherical harmonics
+        use_volsdf: bool = False,
+        # Whether to use VolSDF with density field
     ) -> None:
         super().__init__()
         self.aabb = Parameter(aabb, requires_grad=False)
@@ -83,13 +85,21 @@ class TensoRFField(Field):
 
         self.field_output_rgb = RGBFieldHead(in_dim=self.mlp_head.get_out_dim(), activation=nn.Sigmoid())
 
+        self.use_volsdf = use_volsdf
+
     def get_density(self, ray_samples: RaySamples):
         positions = SceneBox.get_normalized_positions(ray_samples.frustums.get_positions(), self.aabb)
         positions = positions * 2 - 1
         density = self.density_encoding(positions)
         density_enc = torch.sum(density, dim=-1)[:, :, None]
-        relu = torch.nn.ReLU()
-        density_enc = relu(density_enc)
+        if self.use_volsdf:
+            v = density_enc
+            beta = 1e-2
+            alpha = 1/beta
+            density_enc = alpha * (0.5 + 0.5 * v.sign() * torch.expm1(-v.abs() / beta))
+        else:
+            relu = torch.nn.ReLU()
+            density_enc = relu(density_enc)
         return density_enc
 
     def get_outputs(self, ray_samples: RaySamples, density_embedding: Optional[TensorType] = None) -> TensorType:

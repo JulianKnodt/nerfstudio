@@ -72,6 +72,8 @@ class TensoRFModelConfig(ModelConfig):
     """Number of components in color encoding"""
     appearance_dim: int = 27
     """Number of channels for color encoding"""
+    use_volsdf: bool = False
+    """Whether to use VolSDF laplacian for density"""
 
 
 class TensoRFModel(Model):
@@ -170,6 +172,7 @@ class TensoRFModel(Model):
             head_mlp_num_layers=2,
             head_mlp_layer_width=128,
             use_sh=False,
+            use_volsdf=self.config.use_volsdf,
         )
 
         # samplers

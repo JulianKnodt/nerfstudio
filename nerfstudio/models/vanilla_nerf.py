@@ -30,7 +30,9 @@ from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.configs.config_utils import to_immutable_dict
 from nerfstudio.field_components.encodings import NeRFEncoding
-from nerfstudio.field_components.field_heads import FieldHeadNames
+from nerfstudio.field_components.field_heads import (
+  FieldHeadNames, DensityFieldHead, VolSDFFieldHead
+)
 from nerfstudio.field_components.temporal_distortions import TemporalDistortionKind
 from nerfstudio.fields.vanilla_nerf_field import NeRFField
 from nerfstudio.model_components.losses import MSELoss
@@ -58,7 +60,8 @@ class VanillaModelConfig(ModelConfig):
     """Specifies whether or not to include ray warping based on time."""
     temporal_distortion_params: Dict[str, Any] = to_immutable_dict({"kind": TemporalDistortionKind.DNERF})
     """Parameters to instantiate temporal distortion with"""
-
+    density_field_head: FieldHeadNames = FieldHeadNames.DENSITY
+    """What kind of field head to use for the density"""
 
 class NeRFModel(Model):
     """Vanilla NeRF model
@@ -92,15 +95,23 @@ class NeRFModel(Model):
         direction_encoding = NeRFEncoding(
             in_dim=3, num_frequencies=4, min_freq_exp=0.0, max_freq_exp=4.0, include_input=True
         )
+        if self.config.density_field_head == FieldHeadNames.VOLSDF:
+            density_field_head = VolSDFFieldHead
+        elif self.config.density_field_head == FieldHeadNames.DENSITY:
+            density_field_head = DensityFieldHead
+        else:
+            raise NotImplementedError(f"Cannot use {config.density_field_head} as density field head.")
 
         self.field_coarse = NeRFField(
             position_encoding=position_encoding,
             direction_encoding=direction_encoding,
+            density_field_head=density_field_head,
         )
 
         self.field_fine = NeRFField(
             position_encoding=position_encoding,
             direction_encoding=direction_encoding,
+            density_field_head=density_field_head,
         )
 
         # samplers

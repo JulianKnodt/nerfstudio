@@ -23,6 +23,7 @@ from torch import nn
 from torchtyping import TensorType
 
 from nerfstudio.field_components.base_field_component import FieldComponent
+from nerfstudio.field_components.activations import LaplaceSignedDistance
 
 
 class FieldHeadNames(Enum):
@@ -31,6 +32,7 @@ class FieldHeadNames(Enum):
     RGB = "rgb"
     SH = "sh"
     DENSITY = "density"
+    VOLSDF = "volsdf"
     NORMALS = "normals"
     PRED_NORMALS = "pred_normals"
     UNCERTAINTY = "uncertainty"
@@ -101,6 +103,20 @@ class DensityFieldHead(FieldHead):
 
     def __init__(self, in_dim: Optional[int] = None, activation: Optional[nn.Module] = nn.Softplus()) -> None:
         super().__init__(in_dim=in_dim, out_dim=1, field_head_name=FieldHeadNames.DENSITY, activation=activation)
+
+
+class VolSDFFieldHead(FieldHead):
+    """VolSDF signed distance function output
+
+    Args:
+        in_dim: input dimension. If not defined in constructor, it must be set later.
+        activation: output head activation
+    """
+    def __init__(self, in_dim: Optional[int] = None, activation: Optional[nn.Module] = None)-> None:
+        if activation is None:
+          activation = LaplaceSignedDistance()
+        super().__init__(in_dim=in_dim, out_dim=1, field_head_name=FieldHeadNames.DENSITY, activation=activation)
+
 
 
 class RGBFieldHead(FieldHead):

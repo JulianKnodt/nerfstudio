@@ -61,6 +61,7 @@ class NeRFField(Field):
         field_heads: Tuple[FieldHead] = (RGBFieldHead(),),
         use_integrated_encoding: bool = False,
         spatial_distortion: Optional[SpatialDistortion] = None,
+        density_field_head: FieldHead = DensityFieldHead,
     ) -> None:
         super().__init__()
         self.position_encoding = position_encoding
@@ -83,7 +84,7 @@ class NeRFField(Field):
             out_activation=nn.ReLU(),
         )
 
-        self.field_output_density = DensityFieldHead(in_dim=self.mlp_base.get_out_dim())
+        self.field_output_density = density_field_head(in_dim=self.mlp_base.get_out_dim())
         self.field_heads = nn.ModuleList(field_heads)
         for field_head in self.field_heads:
             field_head.set_in_dim(self.mlp_head.get_out_dim())  # type: ignore

@@ -17,6 +17,7 @@ Special activation functions.
 """
 
 import torch
+import torch.nn as nn
 from torch.autograd import Function
 from torch.cuda.amp import custom_bwd, custom_fwd
 
@@ -40,3 +41,17 @@ class _TruncExp(Function):  # pylint: disable=abstract-method
 trunc_exp = _TruncExp.apply
 """Same as torch.exp, but with the backward pass clipped to prevent vanishing/exploding
 gradients."""
+
+# Implementation from VolSDF:
+# https://github.com/lioryariv/volsdf/blob/a974c883eb70af666d8b4374e771d76930c806f3/code/model/density.py#L16
+class LaplaceSignedDistance(nn.Module):
+  def __init__(
+    self,
+    beta: float = 1e-2,
+  ):
+      super().__init__()
+      self.beta = beta
+  def forward(self, v):
+      beta = self.beta
+      alpha = 1/beta
+      return alpha * (0.5 + 0.5 * v.sign() * torch.expm1(-v.abs() / beta))
